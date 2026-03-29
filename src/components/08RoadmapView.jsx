@@ -265,11 +265,6 @@ const RoadmapView = ({
   const [submissionCount, setSubmissionCount] = useState(0);
   const [isPageLoading, setIsPageLoading] = useState(isInitialPageLoad);;
 
-  // Modal state
-  const [showWarningModal, setShowWarningModal] = useState(false);
-  const [pendingFormData, setPendingFormData] = useState(null);
-  const [hideWarningPreference, setHideWarningPreference] = useState(false);
-
   // Options for select fields
   const levelOptions = [
     { value: 'Beginner', label: 'Beginner - Just starting out' },
@@ -285,14 +280,6 @@ const RoadmapView = ({
     { value: 'Academic Study', label: 'Academic Study - Educational' },
     { value: 'Skill Upgrade', label: 'Skill Upgrade - Professional development' }
   ];
-
-  // Initialize "don't show again" preference from localStorage
-  useEffect(() => {
-    const savedPreference = localStorage.getItem('hideRoadmapWarning');
-    if (savedPreference === 'true') {
-      setHideWarningPreference(true);
-    }
-  }, []);
 
   // Sync generation state with parent
   useEffect(() => {
@@ -368,11 +355,6 @@ const RoadmapView = ({
     if (formErrors[name]) {
       setFormErrors(prev => ({ ...prev, [name]: '' }));
     }
-  };
-
-  // Check if should show warning modal
-  const shouldShowWarning = () => {
-    return hasExistingRoadmap && !hideWarningPreference;
   };
 
   // Proceed with roadmap generation (called after modal confirmation or directly)
@@ -455,39 +437,8 @@ const RoadmapView = ({
 
     console.log('📝 Form submission data:', submissionData);
 
-    // Check if we should show warning modal
-    if (shouldShowWarning()) {
-      setPendingFormData(submissionData);
-      setShowWarningModal(true);
-      return;
-    }
-
-    // Proceed directly if no warning needed
+    // Proceed directly (multi-roadmap dashboard mode)
     await proceedWithGeneration(submissionData);
-  };
-
-  // Modal handlers
-  const handleModalProceed = async () => {
-    setShowWarningModal(false);
-    if (pendingFormData) {
-      await proceedWithGeneration(pendingFormData);
-      setPendingFormData(null);
-    }
-  };
-
-  const handleModalCancel = () => {
-    setShowWarningModal(false);
-    setPendingFormData(null);
-  };
-
-  const handleModalClose = () => {
-    setShowWarningModal(false);
-    setPendingFormData(null);
-  };
-
-  const handleDontShowAgain = (hide) => {
-    setHideWarningPreference(hide);
-    localStorage.setItem('hideRoadmapWarning', hide.toString());
   };
 
   // Start polling for roadmap data
@@ -616,14 +567,6 @@ const RoadmapView = ({
   return (
     
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
-      {/* Warning Modal */}
-      <RoadmapWarningModal
-        isOpen={showWarningModal}
-        onClose={handleModalClose}
-        onProceed={handleModalProceed}
-        onCancel={handleModalCancel}
-        onDontShowAgain={handleDontShowAgain}
-      />
 
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 transition-colors duration-300">
@@ -772,7 +715,6 @@ const RoadmapView = ({
                       <div>State: {generationState}</div>
                       <div>Theme: {isDarkMode ? 'Dark' : 'Light'}</div>
                       <div>Has Existing Roadmap: {hasExistingRoadmap ? 'Yes' : 'No'}</div>
-                      <div>Hide Warning: {hideWarningPreference ? 'Yes' : 'No'}</div>
                     </div>
                   </div>
                 )}

@@ -12,22 +12,13 @@ const CONFIG = {
 };
 
 /**
- * Utility function to generate a unique User ID
- */
-export const generateUserID = () => {
-  const timestamp = Date.now().toString(36);
-  const randomStr = Math.random().toString(36).substring(2, 8);
-  return `user_${timestamp}_${randomStr}`;
-};
-
-/**
  * Main service class for handling roadmap operations
  */
 class RoadmapService {
   
   /**
    * Submit form data to local Node.js server for roadmap generation via Ollama
-   * @param {Object} formData - User form data: skill, goal, level, weeks, userID, username, email
+   * @param {Object} formData - User form data: skill, goal, level, weeks
    */
   static async submitToPlanner(formData) {
     console.log('🤖 Submitting roadmap generation request to local AI (Ollama)...');
@@ -63,11 +54,11 @@ class RoadmapService {
   }
 
   /**
-   * Fetch roadmap data for a specific user from local database
+   * Fetch ALL roadmap data for a specific user from local database
    * @param {string} userID - Unique user identifier
    */
   static async fetchRoadmapData(userID) {
-    console.log('📊 Fetching roadmaps for user:', userID);
+    console.log('📊 Fetching all roadmaps for user:', userID);
     
     try {
       const response = await fetch(`${CONFIG.BASE_URL}/roadmaps/${userID}`, {
@@ -75,27 +66,25 @@ class RoadmapService {
       });
 
       if (!response.ok) {
-        throw new Error(`Airtable fetch failed: ${response.status}`);
+        throw new Error(`Roadmap fetch failed: ${response.status}`);
       }
 
       const roadmaps = await response.json();
       
-      if (!roadmaps || roadmaps.length === 0) return null;
+      if (!roadmaps || roadmaps.length === 0) return [];
 
-      // Return the most recent roadmap
-      const activeRoadmap = roadmaps[0];
-      
-      return {
-        ...activeRoadmap,
-        tasks: activeRoadmap.tasks.map(task => ({
+      // Map MongoDB _id to internal id for all tasks in every roadmap
+      return roadmaps.map(roadmap => ({
+        ...roadmap,
+        tasks: roadmap.tasks.map(task => ({
           ...task,
-          id: task._id // Mapping MongoDB ID to internal ID
+          id: task._id
         }))
-      };
+      }));
 
     } catch (error) {
-      console.error('❌ Failed to fetch roadmap data:', error);
-      throw new Error(`Failed to fetch roadmap: ${error.message}`);
+      console.error('❌ Failed to fetch roadmaps:', error);
+      throw new Error(`Failed to fetch roadmaps: ${error.message}`);
     }
   }
 

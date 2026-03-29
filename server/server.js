@@ -23,13 +23,19 @@ app.use(express.json());
 
 // Session setup
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'skillsync_secret_key',
-  resave: false,
+  secret: process.env.SESSION_SECRET || 'skillsync_secret_key_888',
+  resave: true, // Forces session to be saved back to the session store
   saveUninitialized: false,
-  store: MongoStore.create({ mongoUrl: process.env.MONGODB_URI || 'mongodb://localhost:27017/skillsync' }),
+  rolling: true, // Force a session identifier cookie to be set on every response
+  store: MongoStore.create({ 
+    mongoUrl: process.env.MONGODB_URI || 'mongodb://localhost:27017/skillsync',
+    collectionName: 'sessions',
+    ttl: 14 * 24 * 60 * 60 // 14 days
+  }),
   cookie: {
-    maxAge: 1000 * 60 * 60 * 24, // 1 day
-    secure: false, // Set to true if using HTTPS
+    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+    secure: false, // Set to true ONLY if using HTTPS
+    httpOnly: true,
     sameSite: 'lax'
   }
 }));
@@ -66,7 +72,11 @@ app.get('/api/auth/google/callback',
  * Get current logged-in user
  */
 app.get('/api/auth/current_user', (req, res) => {
-  res.send(req.user);
+  if (req.user) {
+    res.json(req.user);
+  } else {
+    res.status(401).json({ error: 'Not authenticated' });
+  }
 });
 
 /**
@@ -80,30 +90,34 @@ app.get('/api/auth/logout', (req, res) => {
 });
 
 /**
- * Generate a new roadmap via local AI (Ollama/TinyDolphin)
+ * Middleware to check authentication
  */
-app.post('/api/roadmaps/generate', async (req, res) => {
-  const { skill, goal, level, weeks, userID, username, email } = req.body;
+const isAuthenticated = (req, res, next) => {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  res.status(401).json({ error: 'Authentication required to generate roadmaps' });
+};
+
+/**
+ * Generate a new roadmap via local AI (Ollama/TinyDolphin)
+ * Restricted to logged-in users only for real tracing.
+ */
+app.post('/api/roadmaps/generate', isAuthenticated, async (req, res) => {
+  const { skill, goal, level, weeks } = req.body;
+  const user = req.user; // Guaranteed to exist by isAuthenticated middleware
 
   try {
-    // 1. Ensure User exists or create new one
-    let user = await User.findOne({ googleId: userID }) || await User.findOne({ userID });
+    console.log(`🎯 Generation requested by Authenticated User: ${user.displayName} (${user.userID})`);
     
-    // If user doesn't exist yet, we can create one if we have minimal data
-    if (!user && username) {
-      console.log(`👤 Creating new user record in DB: ${username}`);
-      user = new User({ userID, username, email });
-      await user.save();
-    }
-
-    // 2. Generate roadmap via local AI (Ollama)
+    // 1. Generate roadmap via local AI (Ollama)
     const aiResponse = await AIService.generateRoadmap({ skill, goal, level, weeks });
 
-    // 3. Create and Save Roadmap object
+    // 2. Create and Save Roadmap object tied to the unique Google ID
     const newRoadmap = new Roadmap({
       title: aiResponse.title || `${skill} Roadmap`,
       skill: aiResponse.skill || skill,
-      userID: user ? user.userID : (userID || 'guest'),
+      userID: user.userID, // Unified ID for perfect tracing
       tasks: aiResponse.tasks || [],
       totalWeeks: aiResponse.totalWeeks || weeks,
       totalTasks: aiResponse.tasks ? aiResponse.tasks.length : 0,
@@ -111,7 +125,7 @@ app.post('/api/roadmaps/generate', async (req, res) => {
     });
 
     await newRoadmap.save();
-    console.log(`✅ Saved new AI roadmap for ${userID} to MongoDB.`);
+    console.log(`✅ Saved new synchronized AI roadmap for ${user.userID} to MongoDB.`);
 
     res.status(201).json(newRoadmap);
 
@@ -122,13 +136,29 @@ app.post('/api/roadmaps/generate', async (req, res) => {
 });
 
 /**
- * Fetch all roadmaps for a user
+ * Fetch all roadmaps for a user (Identity-Aware)
  */
 app.get('/api/roadmaps/:userId', async (req, res) => {
   try {
-    const roadmaps = await Roadmap.find({ userID: req.params.userId }).sort({ createdAt: -1 });
+    const requestedId = req.params.userId;
+    
+    // 1. Find the user first to identify all their possible IDs
+    const user = await User.findOne({ googleId: requestedId }) || await User.findOne({ userID: requestedId });
+    
+    // 2. Build a list of searchable IDs (googleId, internal userID, and the original requestedId)
+    const searchIds = [requestedId];
+    if (user) {
+      if (user.googleId) searchIds.push(user.googleId);
+      if (user.userID) searchIds.push(user.userID);
+    }
+
+    // 3. Find all roadmaps matching ANY of these IDs, sorted by newest first
+    const roadmaps = await Roadmap.find({ userID: { $in: [...new Set(searchIds)] } }).sort({ createdAt: -1 });
+    
+    console.log(`📊 Found ${roadmaps.length} roadmaps for identity: ${requestedId}`);
     res.json(roadmaps);
   } catch (error) {
+    console.error('❌ Roadmap fetch error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

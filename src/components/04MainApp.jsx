@@ -102,8 +102,9 @@ const MainApp = () => {
   const [isFirstTimeUser, setIsFirstTimeUser] = useState(true);
   const [showUserSetupModal, setShowUserSetupModal] = useState(false);
 
-  // === ROADMAP DATA STATE ===
-  const [roadmapData, setRoadmapData] = useState(null);
+  // === ROADMAP DATA STATE (Multi-Roadmap Support) ===
+  const [allRoadmaps, setAllRoadmaps] = useState([]); // Now an array of all saved roadmaps
+  const [roadmapData, setRoadmapData] = useState(null); // The currently active roadmap being viewed
   const [isRoadmapLoading, setIsRoadmapLoading] = useState(false);
   const [roadmapError, setRoadmapError] = useState(null);
   const [roadmapErrorType, setRoadmapErrorType] = useState(null);
@@ -168,8 +169,8 @@ const MainApp = () => {
                               performance.getEntriesByType('navigation')[0]?.type === 'reload';
     
     try {
-      // Set app as ready immediately - no loading state
-      setAppState('ready');
+      // Keep app in 'initializing' state until we've checked for session
+      setAppState('initializing');
       
       // Handle initial page load skeleton timing
       setIsInitialPageLoad(true);
@@ -179,61 +180,74 @@ const MainApp = () => {
 
       // 1. Check for real session with the Backend (CRITICAL)
       console.log('📡 Checking for active session at backend...');
-      const response = await fetch('http://localhost:5000/api/auth/current_user', {
-        credentials: 'include' // Mandatory for cookie sessions
-      });
-      
-      if (response.ok) {
-        const user = await response.json();
+      try {
+        const response = await fetch('http://localhost:5000/api/auth/current_user', {
+          credentials: 'include' // Ensuring session cookie is sent
+        });
         
-        if (user && user.userID) {
-          console.log('✅ Real session found for:', user.displayName || user.username);
+        if (response.ok) {
+          const user = await response.json();
           
-          // Map backend User object to frontend expectations
-          const profile = {
-            userID: user.userID,
-            username: user.username,
-            displayName: user.displayName,
-            email: user.email,
-            avatar: user.avatar,
-            createdAt: user.createdAt
-          };
-          
-          setCurrentUserID(user.userID);
-          setUserProfile(profile);
-          setIsFirstTimeUser(false); // They've successfully logged in once
-          
-          // Restore form data from sessionStorage
-          const savedFormData = sessionStorage.getItem('currentFormData');
-          if (savedFormData) {
-            try {
-              setCurrentFormData(JSON.parse(savedFormData));
-            } catch (e) {
-              console.warn('⚠️ Failed to parse saved form data:', e);
+          if (user && user.userID) {
+            console.log('✅ Real session found for:', user.displayName || user.username);
+            
+            // Map backend User object to frontend expectations
+            const profile = {
+              userID: user.userID,
+              username: user.username,
+              displayName: user.displayName,
+              email: user.email,
+              avatar: user.avatar,
+              createdAt: user.createdAt
+            };
+            
+            setCurrentUserID(user.userID);
+            setUserProfile(profile);
+            setIsFirstTimeUser(false); // They've successfully logged in once
+            
+            // Restore form data from sessionStorage
+            const savedFormData = sessionStorage.getItem('currentFormData');
+            if (savedFormData) {
+              try {
+                setCurrentFormData(JSON.parse(savedFormData));
+              } catch (e) {
+                console.warn('⚠️ Failed to parse saved form data:', e);
+              }
             }
-          }
 
-          // Fetch roadmap data
-          try {
-            const roadmapData = await RoadmapService.fetchRoadmapData(user.userID);
-            if (roadmapData) {
-              setRoadmapData(roadmapData);
-              // Automagically move to workplace if roadmap exists
-              const currentRoute = window.location.hash.slice(1) || 'home';
-              if (currentRoute === 'home') handleRouteChange('workplace');
+            // Clear any lingering auth modals or errors
+            setShowSignInModal(false);
+            setRoadmapError(null);
+            setRoadmapErrorType(null);
+            setModalType(ERROR_TYPES.UNKNOWN_ERROR);
+            
+            // Fetch roadmap data
+            try {
+              const roadmaps = await RoadmapService.fetchRoadmapData(user.userID);
+              if (roadmaps && roadmaps.length > 0) {
+                setAllRoadmaps(roadmaps);
+                setRoadmapData(roadmaps[0]); // Default to the most recent one
+                
+                // Automagically move to workplace if roadmaps exist
+                const currentRoute = window.location.hash.slice(1) || 'home';
+                if (currentRoute === 'home') handleRouteChange('workplace');
+              }
+            } catch (e) {
+              console.log('📝 User has no roadmaps yet.');
             }
-          } catch (e) {
-            console.log('📝 User has no roadmap yet.');
           }
-        } else {
-          console.log('👤 No active session found.');
+        } else if (response.status === 401) {
+          console.log('👤 No active session found (401).');
           setIsFirstTimeUser(true);
           setCurrentUserID(null);
           setUserProfile(null);
         }
+      } catch (err) {
+        console.warn('⚠️ Backend check failed (Network?):', err.message);
+        // DO NOT clear user state on network failure - keep them logged in locally
       }
 
-      // Fetch global total users count for stats
+      // 2. Fetch global total users count for stats
       try {
         const usersCount = await RoadmapService.getTotalUsersCount();
         setTotalUsers(usersCount);
@@ -242,6 +256,8 @@ const MainApp = () => {
         setTotalUsers(1450); // Fallback
       }
 
+      // 3. Mark app as ready ONLY after auth and counts are handled
+      setAppState('ready');
       console.log('✅ MainApp initialized successfully');
       
     } catch (error) {
@@ -485,19 +501,29 @@ const MainApp = () => {
     }
   };
 
-  const refreshRoadmapData = async () => {
-    if (!currentUserID) {
-      console.log('⚠️ No current user to refresh data for');
-      return;
-    }
-
+  const refreshRoadmapData = useCallback(async () => {
+    if (!currentUserID) return;
+    
+    setIsRoadmapLoading(true);
     try {
-      await loadRoadmapData(currentUserID, false);
+      const roadmaps = await RoadmapService.fetchRoadmapData(currentUserID, { credentials: 'include' });
+      if (roadmaps && roadmaps.length > 0) {
+        setAllRoadmaps(roadmaps);
+        // If we don't have an active roadmap or if it's a refresh, 
+        // try to keep the same one selected if possible, otherwise newest
+        if (!roadmapData) {
+          setRoadmapData(roadmaps[0]);
+        } else {
+          const updatedActive = roadmaps.find(r => r._id === roadmapData._id) || roadmaps[0];
+          setRoadmapData(updatedActive);
+        }
+      }
     } catch (error) {
-      console.error('❌ Failed to refresh roadmap data:', error);
-      // Error handling is done in loadRoadmapData
+      console.error('❌ Failed to refresh roadmaps:', error);
+    } finally {
+      setIsRoadmapLoading(false);
     }
-  };
+  }, [currentUserID, roadmapData]);
 
   // === MODAL HANDLERS (ENHANCED) ===
   const handleModalClose = useCallback(() => {
@@ -523,19 +549,27 @@ const MainApp = () => {
   const handleRoadmapGenerated = useCallback(async (formData, generatedRoadmapData = null) => {
     console.log('🎯 Roadmap generation initiated:', formData);
     
+    // 📢 BLOCKER: If user is not logged in, show Sign In Modal instead
+    if (!currentUserID) {
+      console.log('⚠️ Authentication required to generate roadmap');
+      setModalMessage('Please sign in with Google to generate your personalized learning roadmap.');
+      setModalType('auth_required');
+      setShowSignInModal(true);
+      return;
+    }
+
     // Clear any pending overwrite data
     setPendingOverwriteData(null);
     setShowInvalidUserModal(false);
     
     // Update session state
-    setCurrentUserID(formData.userID);
     setCurrentFormData(formData);
     setIsGeneratingRoadmap(true);
     setRoadmapError(null);
     setRoadmapErrorType(null);
     
     // Check user profile status
-    await checkUserProfile(formData.userID);
+    await checkUserProfile(currentUserID);
     
     // Save to sessionStorage for navigation persistence
     sessionStorage.setItem('currentUserID', formData.userID);
@@ -562,7 +596,11 @@ const MainApp = () => {
 
   const handleGenerationComplete = useCallback(async (finalRoadmapData) => {
     console.log('🎉 Roadmap generation completed!', finalRoadmapData);
+    
+    // Add the new roadmap to the top of the list
+    setAllRoadmaps(prev => [finalRoadmapData, ...prev]);
     setRoadmapData(finalRoadmapData);
+    
     setIsGeneratingRoadmap(false);
     setGenerationProgress('');
     setLastDataRefresh(new Date());
@@ -594,25 +632,16 @@ const MainApp = () => {
 
   // === MODAL OVERWRITE HANDLERS ===
   const handleModalProceed = useCallback(() => {
-    console.log('✅ User confirmed roadmap overwrite');
-    
+    console.log('✅ User confirmed roadmap generation');
+    // Proceed with the new roadmap generation
     if (pendingOverwriteData) {
-      // Clear existing roadmap data before proceeding
-      setRoadmapData(null);
-      setRoadmapError(null);
-      setRoadmapErrorType(null);
-      setShowInvalidUserModal(false);
-      
-      // Proceed with the new roadmap generation
       handleRoadmapGenerated(pendingOverwriteData);
-      
-      // Clear pending data
       setPendingOverwriteData(null);
     }
   }, [pendingOverwriteData, handleRoadmapGenerated]);
 
   const handleModalCancel = useCallback(() => {
-    console.log('❌ User cancelled roadmap overwrite');
+    console.log('❌ User cancelled roadmap generation');
     
     // Clear pending data and stay on current state
     setPendingOverwriteData(null);
@@ -954,13 +983,15 @@ const MainApp = () => {
       );
     }
 
-    // Render Workplace component with enhanced props
+    // Render Workplace component with Multi-Roadmap support
     if (activeRoute === 'workplace') {
       return (
         <ActiveComponent
-          roadmapData={shouldShowWorkplaceData() ? roadmapData : null}
+          roadmapData={roadmapData}
+          allRoadmaps={allRoadmaps}
+          onSelectRoadmap={(roadmap) => setRoadmapData(roadmap)}
           userID={currentUserID}
-          onCreateNewRoadmap={handleCreateNewRoadmap}
+          onCreateNewRoadmap={() => handleRouteChange('roadmap')}
           onRefreshData={refreshRoadmapData}
           isLoading={isRoadmapLoading}
           error={roadmapError}

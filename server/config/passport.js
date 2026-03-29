@@ -38,7 +38,7 @@ passport.use(new GoogleStrategy({
       // If not, create a new user
       user = new User({
         googleId: profile.id,
-        userID: `user_${profile.id.substring(0, 8)}`, // Fallback internal ID
+        userID: profile.id, // Absolute unique ID for real tracing
         username: profile.emails[0].value.split('@')[0],
         displayName: profile.displayName,
         email: profile.emails[0].value,

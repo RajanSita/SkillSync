@@ -11,16 +11,18 @@ const MODEL = process.env.OLLAMA_MODEL || 'tinydolphin';
 exports.generateRoadmap = async (formData) => {
   const { skill, goal, level, weeks } = formData;
 
-  const systemPrompt = `You are a professional learning path architect.
-Your goal is to create a weekly learning roadmap for a student.
+  const systemPrompt = `You are an expert learning path architect.
+Your job is to create a COMPREHENSIVE weekly learning roadmap for a student.
 
 OUTPUT RULES:
 - Return ONLY a valid JSON object. 
-- NO conversational text, NO markdown formatting (no \`\`\`json).
-- The "tasks" array must contain exactly 3-4 tasks per week.
-- Keep descriptions concise and practical.
+- NO conversational text, NO markdown tags.
+- Generate content for EXACTLY ${weeks} weeks. No more, no less.
+- Every single week from week 1 to week ${weeks} MUST be included in the "tasks" array.
+- Each week should have 3 to 4 sequential tasks.
+- Keep descriptions concise, actionable, and specific to the ${level} level.
 
-JSON STRUCTURE:
+STRICT JSON STRUCTURE EXAMPLE:
 {
   "title": "Mastering ${skill}",
   "skill": "${skill}",
@@ -29,18 +31,21 @@ JSON STRUCTURE:
     {
       "taskId": 1,
       "week": 1,
-      "theme": "Introduction to ${skill}",
-      "description": "Learn the basics of ${skill} and set up the environment.",
-      "link": "https://www.google.com/search?q=${skill}+basics",
+      "theme": "Foundation",
+      "description": "Task description here",
+      "link": "https://google.com",
       "status": "Pending"
     }
   ]
-}`;
+}
 
-  const userPrompt = `Create a ${weeks}-week roadmap for learning ${skill}. 
+Ensure the "week" field is an INTEGER (1, 2, 3...) for every task.`;
+
+  const userPrompt = `Create a full ${weeks}-week roadmap for learning ${skill}. 
 User Goal: ${goal}
 Current Level: ${level}
-Generate the JSON now.`;
+Requirement: I need a complete plan that spans exactly ${weeks} weeks. 
+Please ensure that you do not truncate the output and provide 3-4 tasks for every single week up to week ${weeks}.`;
 
   try {
     console.log(`🤖 Requesting roadmap from Ollama (${MODEL})...`);

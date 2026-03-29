@@ -21,7 +21,6 @@ import {
   WifiOff
 } from 'lucide-react';
 import RoadmapService from '../services/RoadmapService';
-import RoadmapWarningModal from './06RoadmapWarningModal';
 
 // --- ERROR TYPES (MATCHING MAINAPP) ---
 const ERROR_TYPES = {
@@ -548,6 +547,8 @@ const StreakDisplay = () => {
 // --- MAIN WORKPLACE COMPONENT (ENHANCED) ---
 const Workplace = ({ 
   roadmapData = null, 
+  allRoadmaps = [],
+  onSelectRoadmap,
   userID = null, 
   onCreateNewRoadmap,
   onRefreshData,
@@ -789,10 +790,12 @@ const Workplace = ({
 
   // Group filtered tasks by week
   const tasksByWeek = filteredTasks.reduce((acc, task) => {
-    if (!acc[task.week]) {
-      acc[task.week] = [];
+    // Defense: Ensure week is a valid number
+    const weekNum = parseInt(task.week) || 1;
+    if (!acc[weekNum]) {
+      acc[weekNum] = [];
     }
-    acc[task.week].push(task);
+    acc[weekNum].push(task);
     return acc;
   }, {});
 
@@ -814,43 +817,11 @@ const Workplace = ({
     }
   };
 
-  // Check if should show warning modal
-  const shouldShowWarning = () => {
-    return localRoadmapData && !hideWarningPreference;
-  };
-
-  // Handle create new roadmap with warning check
+  // Handle create new roadmap (Now direct, no more 'Replace' warning!)
   const handleCreateNewRoadmap = () => {
-    if (shouldShowWarning()) {
-      setShowWarningModal(true);
-      return;
-    }
-    
-    // Proceed directly if no warning needed
     if (onCreateNewRoadmap) {
       onCreateNewRoadmap();
     }
-  };
-
-  // Modal handlers
-  const handleModalProceed = () => {
-    setShowWarningModal(false);
-    if (onCreateNewRoadmap) {
-      onCreateNewRoadmap();
-    }
-  };
-
-  const handleModalCancel = () => {
-    setShowWarningModal(false);
-  };
-
-  const handleModalClose = () => {
-    setShowWarningModal(false);
-  };
-
-  const handleDontShowAgain = (hide) => {
-    setHideWarningPreference(hide);
-    localStorage.setItem('hideRoadmapWarning', hide.toString());
   };
 
   // Loading state - show skeleton UI
@@ -918,29 +889,56 @@ const Workplace = ({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4">
-      {/* Add the Warning Modal */}
-      <RoadmapWarningModal
-        isOpen={showWarningModal}
-        onClose={handleModalClose}
-        onProceed={handleModalProceed}
-        onCancel={handleModalCancel}
-        onDontShowAgain={handleDontShowAgain}
-      />
+      <div className="container mx-auto max-w-7xl flex flex-col lg:flex-row gap-8">
+        
+        {/* Left Sidebar: Roadmap Gallery */}
+        <aside className="lg:w-1/4 flex-shrink-0">
+          <div className="bg-[#e3eee6] dark:bg-gray-800 rounded-xl shadow-lg p-6 sticky top-8">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center justify-between">
+              <span>My Roadmaps</span>
+              <span className="text-xs bg-[#5c946d] text-white px-2 py-1 rounded-full">{allRoadmaps.length}</span>
+            </h3>
+            
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+              {allRoadmaps.map((roadmap) => (
+                <div 
+                  key={roadmap._id}
+                  onClick={() => onSelectRoadmap && onSelectRoadmap(roadmap)}
+                  className={`p-3 rounded-lg cursor-pointer transition-all border-2 ${
+                    localRoadmapData?._id === roadmap._id 
+                      ? 'border-[#5c946d] bg-white dark:bg-gray-700 shadow-md translate-x-1' 
+                      : 'border-transparent bg-gray-50 dark:bg-gray-900/50 hover:bg-white dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <h4 className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+                    {roadmap.skill}
+                  </h4>
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="text-[10px] text-gray-500 flex items-center">
+                      <Calendar className="w-3 h-3 mr-1" />
+                      {new Date(roadmap.createdAt).toLocaleDateString()}
+                    </div>
+                    <div className="text-[10px] font-bold text-[#5c946d]">
+                      {Math.round((roadmap.completedTasks / (roadmap.totalTasks || 1)) * 100)}%
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
 
-      {/* Enhanced Invalid User Modal */}
-      <InvalidUserModal
-        isOpen={showInvalidUserModal}
-        onClose={onModalClose}
-        onTryAgain={onModalTryAgain}
-        onGoHome={onModalGoHome}
-        message={modalMessage}
-        userID={userID}
-        modalType={modalType}
-        connectionStatus={connectionStatus}
-      />
+            <Button 
+              onClick={handleCreateNewRoadmap}
+              className="w-full mt-6 flex items-center justify-center space-x-2"
+              variant="primary"
+            >
+              <Target className="h-4 w-4" />
+              <span>New Goal</span>
+            </Button>
+          </div>
+        </aside>
 
-      <div className="container mx-auto max-w-6xl">
+        {/* Right Content: Active Roadmap details */}
+        <div className="flex-1 min-w-0">
         
         {/* Header Section */}
         <div className="text-center mb-8">

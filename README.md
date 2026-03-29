@@ -1,10 +1,8 @@
 # SkillSync - AI-Powered Learning Roadmap Platform
 
 [![React](https://img.shields.io/badge/React-19.0-blue)](https://reactjs.org)
-[![AI Powered](https://img.shields.io/badge/AI-Powered-orange)](https://github.com/srivas-saksham/SkillSync)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-> **Developed during IBM Summer Internship 2025** 🎓  
 > Transform your learning journey with AI-generated, personalized roadmaps
 
 ## Overview

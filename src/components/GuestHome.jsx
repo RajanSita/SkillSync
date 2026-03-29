@@ -17,7 +17,7 @@ const GuestHome = ({ onLoginClick }) => {
           </h1>
           <p className="text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto leading-relaxed">
             Generate highly personalized learning roadmaps based on your skills, goals, and availability. 
-            Sign in with Google to get started.
+            <span className="block font-semibold text-[#5C946E] mt-2">Sign in with Google to create your first roadmap.</span>
           </p>
           <div className="pt-4 flex justify-center space-x-4">
             <button 
