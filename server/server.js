@@ -40,7 +40,7 @@ app.use(passport.session());
 
 const User = require('./models/User');
 const Roadmap = require('./models/Roadmap');
-// const AIService = require('./services/aiService');
+const AIService = require('./services/aiService');
 
 // Auth Routes
 
@@ -80,38 +80,38 @@ app.get('/api/auth/logout', (req, res) => {
 });
 
 /**
- * Generate a new roadmap (Temporarily disabled - Waiting for Ollama setup)
+ * Generate a new roadmap via local AI (Ollama/TinyDolphin)
  */
 app.post('/api/roadmaps/generate', async (req, res) => {
-  res.status(501).json({ message: "AI Roadmap generation is temporarily disabled. Set up Ollama to enable this feature." });
-  /*
   const { skill, goal, level, weeks, userID, username, email } = req.body;
 
   try {
     // 1. Ensure User exists or create new one
-    let user = await User.findOne({ userID });
-    if (!user) {
+    let user = await User.findOne({ googleId: userID }) || await User.findOne({ userID });
+    
+    // If user doesn't exist yet, we can create one if we have minimal data
+    if (!user && username) {
       console.log(`👤 Creating new user record in DB: ${username}`);
       user = new User({ userID, username, email });
       await user.save();
     }
 
-    // 2. Generate tasks via local AI
-    const tasks = await AIService.generateRoadmap({ skill, goal, level, weeks });
+    // 2. Generate roadmap via local AI (Ollama)
+    const aiResponse = await AIService.generateRoadmap({ skill, goal, level, weeks });
 
     // 3. Create and Save Roadmap object
     const newRoadmap = new Roadmap({
-      title: `${skill} Roadmap`,
-      skill,
-      userID,
-      tasks,
-      totalWeeks: weeks,
-      totalTasks: tasks.length,
+      title: aiResponse.title || `${skill} Roadmap`,
+      skill: aiResponse.skill || skill,
+      userID: user ? user.userID : (userID || 'guest'),
+      tasks: aiResponse.tasks || [],
+      totalWeeks: aiResponse.totalWeeks || weeks,
+      totalTasks: aiResponse.tasks ? aiResponse.tasks.length : 0,
       completedTasks: 0
     });
 
     await newRoadmap.save();
-    console.log(`✅ Saved new roadmap for ${userID} to MongoDB.`);
+    console.log(`✅ Saved new AI roadmap for ${userID} to MongoDB.`);
 
     res.status(201).json(newRoadmap);
 
@@ -119,7 +119,6 @@ app.post('/api/roadmaps/generate', async (req, res) => {
     console.error('❌ Roadmap Generation API Error:', error.message);
     res.status(500).json({ error: error.message });
   }
-  */
 });
 
 /**
@@ -152,6 +151,47 @@ app.patch('/api/tasks/:id', async (req, res) => {
     
     await roadmap.save();
     res.json(roadmap);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Fetch a user's profile and their most recent skill
+ */
+app.get('/api/users/:userId', async (req, res) => {
+  try {
+    const user = await User.findOne({ googleId: req.params.userId }) || await User.findOne({ userID: req.params.userId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Fetch the most recent roadmap to get the user's current skill
+    const latestRoadmap = await Roadmap.findOne({ userID: user.userID }).sort({ createdAt: -1 });
+    
+    res.json({
+      ...user._doc,
+      skill: latestRoadmap ? latestRoadmap.skill : null
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Update user profile (Username/DisplayName)
+ */
+app.patch('/api/users/:userId', async (req, res) => {
+  try {
+    const { username, displayName } = req.body;
+    const user = await User.findOne({ googleId: req.params.userId }) || await User.findOne({ userID: req.params.userId });
+    
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (username) user.username = username;
+    if (displayName) user.displayName = displayName;
+    
+    await user.save();
+    console.log(`👤 Updated profile for ${user.userID}: ${user.username}`);
+    res.json(user);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

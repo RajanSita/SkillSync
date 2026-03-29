@@ -137,12 +137,78 @@ class RoadmapService {
   }
 
   static async fetchUserProfile(userID) {
-    // Note: We've simplified user profiles to be managed locally during generate call
-    return { userID, username: 'Logged In User' };
+    if (!userID) return null;
+    console.log('👤 Fetching user profile from backend:', userID);
+    
+    try {
+      const response = await fetch(`${CONFIG.BASE_URL}/users/${userID}`, {
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error(`Profile fetch failed: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('❌ Failed to fetch user profile:', error);
+      return { userID, username: 'Logged In User' }; // Fallback
+    }
+  }
+
+  /**
+   * Specifically fetch the current skill the user is learning
+   */
+  static async fetchUserSkill(userID) {
+    try {
+      const profile = await this.fetchUserProfile(userID);
+      return profile?.skill || null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Update the user profile (Generic helper)
+   */
+  static async updateUserProfile(userID, data) {
+    console.log('👤 Updating user profile:', { userID, ...data });
+    
+    try {
+      const response = await fetch(`${CONFIG.BASE_URL}/users/${userID}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error(`Profile update failed: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('❌ Failed to update user profile:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set initial username for a new user
+   */
+  static async updateNewUserToActualName(userID, username) {
+    return await this.updateUserProfile(userID, { username });
+  }
+
+  /**
+   * Update an existing username
+   */
+  static async updateUsername(userID, newUsername) {
+    return await this.updateUserProfile(userID, { username: newUsername });
   }
 
   static async getTotalUsersCount() {
-    return 1450; // Mock count or we could implement a global count endpoint
+    return 1450; 
   }
 }
 
