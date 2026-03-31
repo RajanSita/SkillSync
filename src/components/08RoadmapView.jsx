@@ -224,16 +224,23 @@ const SkeletonTipCard = () => (
 );
 
 // --- MAIN HOME COMPONENT ---
-const RoadmapView = ({ 
-  onRoadmapGenerated, 
-  onSwitchToWorkplace, 
-  // existingFormData = null,
-  isGenerating = false,
-  hasExistingRoadmap = false,
-  currentUserID = null,
-  onFirstTimeGeneration = null,
-  isInitialPageLoad = false
-}) => {
+const RoadmapView = (props) => {
+  const { 
+    onRoadmapGenerated, 
+    onSwitchToWorkplace,
+    isGenerating = false,
+    onProgress,
+    onComplete,
+    onError,
+    hasExistingRoadmap = false,
+    currentUserID = null, // Authenticated ID from MainApp
+    roadmapData,
+    onModalProceed,
+    onModalCancel,
+    roadmapError,
+    roadmapErrorType,
+    isInitialPageLoad = true
+  } = props;
   // Use theme from context instead of local state
   const { isDarkMode } = useTheme();
 
@@ -245,16 +252,13 @@ const RoadmapView = ({
     document.title = 'SkillSync - Generate Roadmap';
   }, []);
 
-  // Generate initial UserID immediately
-  const [initialUserID] = useState(() => generateUserID());
-
   // Form state with proper UserID initialization
   const [formData, setFormData] = useState({
     skill: '',
-    userID: initialUserID,
-    goal: 'Get a Job',
+    goal: 'Career Pivot',
     level: 'Beginner',
-    weeks: ''
+    weeks: 4,
+    userID: currentUserID || '' // Use real authenticated ID
   });
 
   // UI state
@@ -289,15 +293,12 @@ const RoadmapView = ({
     }
   }, [isGenerating, generationState]);
 
-  // Debug logging for UserID
+  // Update userID if currentUserID changes
   useEffect(() => {
-    console.log('🔍 Home component UserID state:', {
-      'formData.userID': formData.userID,
-      'initialUserID': initialUserID,
-      'currentUserID': currentUserID,
-      'hasExistingRoadmap': hasExistingRoadmap
-    });
-  }, [formData.userID, initialUserID, currentUserID, hasExistingRoadmap]);
+    if (currentUserID) {
+      setFormData(prev => ({ ...prev, userID: currentUserID }));
+    }
+  }, [currentUserID]);
 
   // Add this useEffect to detect page load completion
   useEffect(() => {
@@ -327,7 +328,7 @@ const RoadmapView = ({
       errors.level = 'Current level is required';
     }
 
-    if (!formData.weeks.trim()) {
+    if (!formData.weeks.toString().trim()) {
       errors.weeks = 'Number of weeks is required';
     } else if (isNaN(formData.weeks) || parseInt(formData.weeks) < 1 || parseInt(formData.weeks) > 12) {
       errors.weeks = 'Please enter a number between 1 and 12 weeks';
@@ -336,10 +337,7 @@ const RoadmapView = ({
     // Validate UserID
     if (!formData.userID || formData.userID.trim() === '') {
       console.warn('⚠️ UserID is missing during validation');
-      // Regenerate UserID if missing
-      const newUserID = generateUserID();
-      setFormData(prev => ({ ...prev, userID: newUserID }));
-      console.log('🔧 Generated new UserID during validation:', newUserID);
+      errors.userID = 'User authentication required';
     }
 
     setFormErrors(errors);
@@ -363,14 +361,9 @@ const RoadmapView = ({
     
     // Ensure UserID exists before proceeding
     if (!dataToSubmit.userID || dataToSubmit.userID.trim() === '') {
-      const newUserID = generateUserID();
-      dataToSubmit.userID = newUserID;
-      console.log('🔧 Generated UserID before submission:', newUserID);
-      
-      // Update form state if using current formData
-      if (!submissionData) {
-        setFormData(prev => ({ ...prev, userID: newUserID }));
-      }
+      setError('User authentication required to generate roadmap.');
+      setGenerationState('error');
+      return;
     }
     
     setGenerationState('submitting');
@@ -427,15 +420,16 @@ const RoadmapView = ({
       return;
     }
 
-    // Ensure UserID exists
+    // CRITICAL: Force the real authenticated ID
     let submissionData = { ...formData };
-    if (!submissionData.userID || submissionData.userID.trim() === '') {
-      submissionData.userID = generateUserID();
-      setFormData(prev => ({ ...prev, userID: submissionData.userID }));
-      console.log('🔧 Generated UserID during submit:', submissionData.userID);
+    if (!currentUserID) {
+      setError('Please sign in with Google to create a roadmap.');
+      setGenerationState('error');
+      return;
     }
+    submissionData.userID = currentUserID;
 
-    console.log('📝 Form submission data:', submissionData);
+    console.log('📝 Form submission data (Authenticated):', submissionData);
 
     // Proceed directly (multi-roadmap dashboard mode)
     await proceedWithGeneration(submissionData);
@@ -498,16 +492,15 @@ const RoadmapView = ({
     setFormErrors({});
     setSubmissionCount(0);
     
-    const newUserID = generateUserID();
     setFormData(prev => ({
       skill: '',
-      goal: 'Get a Job',
+      goal: 'Career Pivot',
       level: 'Beginner',
-      weeks: '',
-      userID: newUserID
+      weeks: 4,
+      userID: currentUserID || '' // Use real authenticated ID
     }));
     
-    console.log('🔄 Form reset with new UserID:', newUserID);
+    console.log('🔄 Form reset with current UserID:', currentUserID);
   };
 
   // Cancel generation process
@@ -706,11 +699,10 @@ const RoadmapView = ({
 
                 {/* Debug Info (Development only) */}
                 {formData.userID && process.env.NODE_ENV === 'development' && (
-                  <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4 transition-colors duration-200">
+                  <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg p-4 transition-colors duration-200">
                     <div className="text-xs text-gray-600 dark:text-gray-400 transition-colors duration-200">
                       <div className="font-medium mb-1">Debug Information:</div>
                       <div>User ID: {formData.userID}</div>
-                      <div>Initial ID: {initialUserID}</div>
                       <div>Current User ID: {currentUserID || 'None'}</div>
                       <div>State: {generationState}</div>
                       <div>Theme: {isDarkMode ? 'Dark' : 'Light'}</div>

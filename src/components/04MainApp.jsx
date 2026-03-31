@@ -238,9 +238,12 @@ const MainApp = () => {
           }
         } else if (response.status === 401) {
           console.log('👤 No active session found (401).');
-          setIsFirstTimeUser(true);
-          setCurrentUserID(null);
-          setUserProfile(null);
+          // Only clear local state if we don't have a user, or if this is the initial load
+          if (!currentUserID || isInitialPageLoad) {
+            setIsFirstTimeUser(true);
+            setCurrentUserID(null);
+            setUserProfile(null);
+          }
         }
       } catch (err) {
         console.warn('⚠️ Backend check failed (Network?):', err.message);
@@ -267,7 +270,15 @@ const MainApp = () => {
     }
   };
 
-  // === EVENT LISTENERS ===
+  // === ULTIMATE SAFETY SHIELD ===
+  // If currentUserID is present, never show the Sign In modal
+  useEffect(() => {
+    if (currentUserID && showSignInModal) {
+      console.log('🛡️ Ultimate Safety Shield: User is present, force-closing Sign In modal');
+      setShowSignInModal(false);
+      setModalType(ERROR_TYPES.UNKNOWN_ERROR); // Clear any auth-related modal type
+    }
+  }, [currentUserID, showSignInModal]);
   const setupEventListeners = () => {
     // Online/offline detection
     const handleOnline = () => {
@@ -389,11 +400,16 @@ const MainApp = () => {
       setShowInvalidUserModal(false);
     }
     
+    // Safety: Also close sign-in modal on route change
+    if (showSignInModal) {
+      setShowSignInModal(false);
+    }
+    
     // Auto-load data when switching to workplace
     if (newRoute === 'workplace' && currentUserID && !roadmapData && !isRoadmapLoading) {
       loadRoadmapData(currentUserID, false);
     }
-  }, [activeRoute, roadmapError, showInvalidUserModal, currentUserID, roadmapData, isRoadmapLoading]);
+  }, [activeRoute, roadmapError, showInvalidUserModal, showSignInModal, currentUserID, roadmapData, isRoadmapLoading]);
 
   const switchToHome = useCallback(() => {
     handleRouteChange('home');
@@ -408,19 +424,17 @@ const MainApp = () => {
     if (!userID) {
       console.log('⚠️ No userID provided for roadmap loading');
       const errorInfo = {
-        type: ERROR_TYPES.NO_ROADMAP_DATA,
-        message: 'No User ID provided. Please create a new roadmap.'
+        type: ERROR_TYPES.USER_NOT_FOUND,
+        message: 'Unable to retrieve user data. Please ensure you are logged in.'
       };
       
       setRoadmapErrorType(errorInfo.type);
       setModalMessage(errorInfo.message);
       setModalType(errorInfo.type);
-      
-      if (!silent) {
-        setShowInvalidUserModal(true);
-      }
-      return;
+      setShowInvalidUserModal(true);
+      // REMOVED: setShowSignInModal(true) - Never auto-pop the login modal during data fetch
     }
+    if (!userID) return;
 
     if (!silent) {
       setIsRoadmapLoading(true);
@@ -547,20 +561,10 @@ const MainApp = () => {
 
   // === ROADMAP GENERATION HANDLERS ===
   const handleRoadmapGenerated = useCallback(async (formData, generatedRoadmapData = null) => {
-    console.log('🎯 Roadmap generation initiated:', formData);
-    
-    // 📢 BLOCKER: If user is not logged in, show Sign In Modal instead
-    if (!currentUserID) {
-      console.log('⚠️ Authentication required to generate roadmap');
-      setModalMessage('Please sign in with Google to generate your personalized learning roadmap.');
-      setModalType('auth_required');
-      setShowSignInModal(true);
-      return;
-    }
-
     // Clear any pending overwrite data
     setPendingOverwriteData(null);
     setShowInvalidUserModal(false);
+    setShowSignInModal(false); // <--- FORCE CLOSE GHOST MODAL
     
     // Update session state
     setCurrentFormData(formData);
@@ -582,11 +586,8 @@ const MainApp = () => {
       setIsGeneratingRoadmap(false);
       setLastDataRefresh(new Date());
       
-      // Check if this is a first-time user and show username setup modal
-      if (isFirstTimeUser) {
-        console.log('🎯 First-time user detected - showing username setup modal');
-        setShowUserSetupModal(true);
-      }
+      // Skip setup modal - allow user to explore first
+      setShowUserSetupModal(false);
     }
   }, []);
 
@@ -607,11 +608,14 @@ const MainApp = () => {
     setRoadmapError(null);
     setRoadmapErrorType(null);
     setShowInvalidUserModal(false);
+    setShowSignInModal(false); // <--- FORCE CLOSE GHOST MODAL
     
-    // Check if this is a first-time user and show username setup modal
-    if (currentUserID && isFirstTimeUser) {
-      console.log('🎯 First-time user detected - showing username setup modal');
-      setShowUserSetupModal(true);
+    // Skip the first-time user setup modal to prevent recording interruptions
+    setShowUserSetupModal(false);
+    
+    // Always switch to workplace route on completion
+    if (activeRoute !== 'workplace') {
+      handleRouteChange('workplace');
     }
   }, [currentUserID, isFirstTimeUser]);
 
@@ -1175,6 +1179,7 @@ const MainApp = () => {
           onClose={() => setShowSignInModal(false)}
           onSignIn={handleSignIn}
           isLoading={isSigningIn}
+          currentUserID={currentUserID}
         />
 
         {/* Debug Info (Development only) */}

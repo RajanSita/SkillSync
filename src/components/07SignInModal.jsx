@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, LogIn, AlertCircle, Loader2 } from 'lucide-react';
 
-const SignInModal = ({ isOpen, onClose, onSignIn, isLoading = false }) => {
+const SignInModal = ({ isOpen, onClose, onSignIn, isLoading = false, currentUserID = null }) => {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -30,14 +30,14 @@ const SignInModal = ({ isOpen, onClose, onSignIn, isLoading = false }) => {
     }
   };
 
-  // Don't render if not open
-  if (!isOpen) return null;
+  // Don't render if not open OR if user is already logged in (Ultimate Nuke)
+  if (!isOpen || currentUserID) return null;
 
   const isProcessing = isSubmitting || isLoading;
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isProcessing) {
           onClose();

@@ -1166,7 +1166,7 @@ const Workplace = ({
                             const isCompleted = task.status === 'Completed';
                             const isUpdating = updatingTasks.has(task.id);
                             const isExpanded = expandedTasks.has(task.id);
-                            const hasResources = task.link && task.link.trim();
+                            const hasResources = task.matchedResources && task.matchedResources.length > 0;
                             
                             return (
                               <div key={task.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
@@ -1199,8 +1199,8 @@ const Workplace = ({
                                               onClick={() => toggleResourceDropdown(task.id)}
                                               className="flex items-center space-x-2 mt-3 text-sm text-[#5c946d] hover:text-[#4b7f5b] dark:text-[#5c946d] dark:hover:text-[#76b089] transition-colors"
                                             >
-                                              <ExternalLink className="h-4 w-4" />
-                                              <span>Learning Resources</span>
+                                              <BookOpen className="h-4 w-4" />
+                                              <span>{task.matchedResources.length} Learning Resources</span>
                                               <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${
                                                 isExpanded ? 'rotate-180' : 'rotate-0'
                                               }`} />
@@ -1262,25 +1262,16 @@ const Workplace = ({
                                         <span>Learning Resources</span>
                                       </h4>
                                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        {task.link.split(',').map((link, index) => {
-                                          const trimmedLink = link.trim();
+                                        {task.matchedResources.map((res, index) => {
+                                          const trimmedLink = res.url?.trim();
                                           if (!trimmedLink) return null;
                                           
-                                          // Extract domain name for display
-                                          let displayName = trimmedLink;
+                                          // Extract domain name for display fallback
                                           let domain = '';
                                           try {
                                             const url = new URL(trimmedLink);
                                             domain = url.hostname.replace('www.', '');
-                                            displayName = url.pathname === '/' ? domain : `${domain}${url.pathname}`;
-                                            if (displayName.length > 40) {
-                                              displayName = displayName.substring(0, 40) + '...';
-                                            }
-                                          } catch (e) {
-                                            if (displayName.length > 40) {
-                                              displayName = displayName.substring(0, 40) + '...';
-                                            }
-                                          }
+                                          } catch (e) {}
                                           
                                           return (
                                             <a
@@ -1288,18 +1279,24 @@ const Workplace = ({
                                               href={trimmedLink}
                                               target="_blank"
                                               rel="noopener noreferrer"
-                                              className="flex items-center space-x-3 p-3 rounded-lg bg-[#e3eee6] dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:border-[#5c946d] dark:hover:border-[#5c946d] hover:shadow-sm transition-all group"
+                                              className="flex flex-col p-4 rounded-lg bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:border-[#5c946d] dark:hover:border-[#5c946d] hover:shadow-md transition-all group"
                                             >
-                                              <ExternalLink className="h-4 w-4 text-gray-400 group-hover:text-[#5c946d] flex-shrink-0" />
-                                              <div className="flex-1 min-w-0">
-                                                <div className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
-                                                  {displayName}
-                                                </div>
-                                                {domain && (
-                                                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                    {domain}
-                                                  </div>
-                                                )}
+                                              <div className="flex items-center justify-between mb-2">
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
+                                                  res.type === 'Lecture' ? 'bg-purple-100 text-purple-700' :
+                                                  res.type === 'Course' ? 'bg-blue-100 text-blue-700' :
+                                                  res.type === 'Tutorial' ? 'bg-orange-100 text-orange-700' :
+                                                  'bg-green-100 text-green-700'
+                                                }`}>
+                                                  {res.type || 'Resource'}
+                                                </span>
+                                                <ExternalLink className="h-3 w-3 text-gray-400 group-hover:text-[#5c946d]" />
+                                              </div>
+                                              <div className="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 mb-1 line-clamp-2">
+                                                {res.title || domain || 'Link'}
+                                              </div>
+                                              <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                                                {domain}
                                               </div>
                                             </a>
                                           );
